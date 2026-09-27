@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from yoto_skill.cli import main
+from yoto_skill.cli import execute, main, parser
 from yoto_skill.errors import YotoError
 
 
@@ -48,3 +48,11 @@ def test_auth_complete_reads_result_from_stdin(monkeypatch, capsys) -> None:
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["data"] == {"received": {"code": "c", "state": "s"}}
+
+
+def test_numbered_icon_cli_command(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path))
+    args = parser().parse_args(["icons", "number", "--number", "12"])
+    result = execute(args, FakeAuth(), FakeService())
+    assert result["width"] == result["height"] == 16
+    assert result["icon"].endswith("icon-16.png")

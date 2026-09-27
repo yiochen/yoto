@@ -123,6 +123,16 @@ Follow the same generate → prepare → inspect workflow used for a new song, t
 
 The same uploaded icon is applied to the chapter and its single track.
 
+## Audiobook chapter icons
+
+Inspect the local MP3 order and search for the exact edition's chapter list. Match a descriptive title to a file only when the audiobook track list or file metadata confirms it; a print table of contents may not match the audio splits. For a verified descriptive chapter, generate a distinct icon based on a concrete motif supported by that chapter's title or description. When the title or mapping is uncertain, use a numbered icon so the listener can follow the playlist visually:
+
+```bash
+... --json icons number --number 7
+```
+
+This returns exact 16×16 RGBA `icon` and enlarged `preview` paths. The number refers to the visible playlist track order, including any introduction. Inspect the preview before uploading, and pass the `icon` path to `songs add` or `songs set-icon`. Do not invent a descriptive chapter title or icon from a general synopsis.
+
 ## Boundaries and recovery
 
 - Support macOS, local MP3 files, and user-owned MYO playlists only.

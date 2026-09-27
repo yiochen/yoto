@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
 from .api import YotoAPI
 from .errors import YotoError, require
@@ -63,6 +63,56 @@ def prepare_icon(source: str | Path, title: str, root: Path | None = None) -> Pr
     with Image.open(icon_path) as check:
         require(check.size == (16, 16) and check.mode == "RGBA", "invalid_icon_output", "Icon conversion failed")
     return PreparedIcon(str(saved_source), str(icon_path), str(preview_path))
+
+
+_DIGITS = {
+    "0": ("111", "101", "101", "101", "111"),
+    "1": ("010", "110", "010", "010", "111"),
+    "2": ("111", "001", "111", "100", "111"),
+    "3": ("111", "001", "111", "001", "111"),
+    "4": ("101", "101", "111", "001", "001"),
+    "5": ("111", "100", "111", "001", "111"),
+    "6": ("111", "100", "111", "101", "111"),
+    "7": ("111", "001", "001", "001", "001"),
+    "8": ("111", "101", "111", "101", "111"),
+    "9": ("111", "101", "111", "001", "111"),
+}
+
+
+def numbered_icon(number: int, root: Path | None = None) -> PreparedIcon:
+    """Create a 16x16 flame-and-number icon for a track without a verified chapter title."""
+    require(1 <= number <= 999, "invalid_chapter_number", "Track number must be between 1 and 999")
+    digits = f"{number:02d}"
+    destination = (root or app_data_dir() / "generated-icons") / f"chapter-number-{digits}"
+    destination.mkdir(parents=True, exist_ok=True)
+    source = destination / "source.png"
+    icon_path = destination / "icon-16.png"
+    preview_path = destination / "preview-256.png"
+    image = Image.new("RGBA", (16, 16), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(image)
+    for x, y, color in (
+        (7, 0, "#ffcd32"), (7, 1, "#ff8c19"), (6, 2, "#dc281e"),
+        (7, 2, "#ff8c19"), (8, 2, "#dc281e"), (6, 3, "#dc281e"),
+        (7, 3, "#ffcd32"), (8, 3, "#dc281e"),
+    ):
+        draw.point((x, y), fill=color)
+    scale = 2 if len(digits) == 2 else 1
+    glyph_width = 3 * scale
+    gap = scale
+    width = len(digits) * glyph_width + (len(digits) - 1) * gap
+    left = (16 - width) // 2
+    top = 6 if scale == 2 else 8
+    for index, digit in enumerate(digits):
+        for row, pixels in enumerate(_DIGITS[digit]):
+            for column, pixel in enumerate(pixels):
+                if pixel == "1":
+                    x = left + index * (glyph_width + gap) + column * scale
+                    y = top + row * scale
+                    draw.rectangle((x, y, x + scale - 1, y + scale - 1), fill="#ffe270")
+    image.save(source, format="PNG", optimize=True)
+    image.save(icon_path, format="PNG", optimize=True)
+    image.resize((256, 256), Image.Resampling.NEAREST).save(preview_path, format="PNG")
+    return PreparedIcon(str(source), str(icon_path), str(preview_path))
 
 
 def upload_icon(api: YotoAPI, prepared: PreparedIcon) -> dict[str, str]:

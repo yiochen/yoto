@@ -11,7 +11,7 @@ import httpx
 from .api import YotoAPI
 from .auth import AuthManager, DEFAULT_AUTH_BASE, DEFAULT_REMOTE_CALLBACK_URL
 from .errors import YotoError
-from .icons import prepare_icon
+from .icons import numbered_icon, prepare_icon
 from .media import inspect_mp3
 from .service import YotoService
 from .storage import ConfigStore, KeychainTokenStore
@@ -52,6 +52,8 @@ def parser() -> argparse.ArgumentParser:
     prepare = icon_commands.add_parser("prepare")
     prepare.add_argument("--input", required=True)
     prepare.add_argument("--title", required=True)
+    number = icon_commands.add_parser("number", help="Create a 16x16 numbered chapter icon")
+    number.add_argument("--number", required=True, type=int)
 
     song = categories.add_parser("songs")
     song_commands = song.add_subparsers(dest="command", required=True)
@@ -116,6 +118,8 @@ def execute(args: argparse.Namespace, auth: AuthManager, service: YotoService) -
         return inspect_mp3(args.file).json()
     if args.category == "icons" and args.command == "prepare":
         return prepare_icon(args.input, args.title).json()
+    if args.category == "icons" and args.command == "number":
+        return numbered_icon(args.number).json()
     if args.category == "songs":
         operations = {
             "add": lambda: service.add_song(args.card_id, args.file, args.icon_file, args.title),

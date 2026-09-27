@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from yoto_skill.errors import YotoError
-from yoto_skill.icons import prepare_icon
+from yoto_skill.icons import numbered_icon, prepare_icon
 from yoto_skill.media import AudioInfo, upload_audio
 
 
@@ -27,6 +27,23 @@ def test_icon_conversion_is_exact_rgba_and_pixel_preview(tmp_path) -> None:
         assert preview.size == (256, 256)
         assert preview.getpixel((8, 8)) == preview.getpixel((15, 15))
     assert Path(prepared.source).exists()
+
+
+def test_numbered_icon_has_distinct_readable_digits(tmp_path) -> None:
+    first = numbered_icon(7, tmp_path)
+    second = numbered_icon(38, tmp_path)
+    with Image.open(first.icon) as one, Image.open(second.icon) as two:
+        assert one.size == two.size == (16, 16)
+        assert one.mode == two.mode == "RGBA"
+        assert one.tobytes() != two.tobytes()
+        assert sum(one.getpixel((x, y))[0] > 180 for y in range(6, 16) for x in range(16)) > 20
+    assert Path(first.preview).exists()
+
+
+@pytest.mark.parametrize("number", [0, 1000])
+def test_numbered_icon_rejects_out_of_range(number, tmp_path) -> None:
+    with pytest.raises(YotoError, match="between 1 and 999"):
+        numbered_icon(number, tmp_path)
 
 
 class FakeMediaAPI:
