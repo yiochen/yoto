@@ -14,7 +14,7 @@ from .errors import YotoError
 from .icons import prepare_icon
 from .media import inspect_mp3
 from .service import YotoService
-from .storage import ConfigStore, KeychainTokenStore
+from .storage import ConfigStore, default_token_store
 
 
 def parser() -> argparse.ArgumentParser:
@@ -83,7 +83,7 @@ def dependencies() -> tuple[AuthManager, YotoService]:
     auth_http = httpx.Client(timeout=30)
     auth = AuthManager(
         config=ConfigStore(),
-        tokens=KeychainTokenStore(),
+        tokens=default_token_store(),
         http=auth_http,
         auth_base=os.environ.get("YOTO_AUTH_BASE_URL", DEFAULT_AUTH_BASE),
     )

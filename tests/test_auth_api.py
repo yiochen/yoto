@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.parse
 from copy import deepcopy
 from typing import Any
@@ -18,7 +19,7 @@ from yoto_skill.auth import (
     pkce_pair,
 )
 from yoto_skill.errors import YotoError
-from yoto_skill.storage import ConfigStore, KeychainTokenStore
+from yoto_skill.storage import ConfigStore, KeychainTokenStore, WindowsTokenStore, default_token_store
 
 
 def test_pkce_and_authorization_parameters() -> None:
@@ -120,6 +121,7 @@ def test_phone_auth_discards_expired_attempt(tmp_path) -> None:
     assert "client:pending-login" not in tokens.values
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows uses account ACLs rather than POSIX mode bits")
 def test_config_is_private(tmp_path) -> None:
     store = ConfigStore(tmp_path)
     store.write({"client_id": "abc"})
@@ -127,6 +129,7 @@ def test_config_is_private(tmp_path) -> None:
     assert os.stat(store.path).st_mode & 0o777 == 0o600
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS Keychain only")
 def test_keychain_serializes_secret_for_native_api(monkeypatch) -> None:
     call = {}
     store = KeychainTokenStore()
@@ -140,18 +143,35 @@ def test_keychain_serializes_secret_for_native_api(monkeypatch) -> None:
     assert json.loads(call["raw"]) == {"access_token": "secret"}
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS Keychain only")
 def test_keychain_missing_item_is_not_an_error(monkeypatch) -> None:
     store = KeychainTokenStore()
     monkeypatch.setattr(store, "_load_raw", lambda _account: None)
     assert store.load("client") is None
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS Keychain only")
 def test_keychain_invalid_document_is_reported(monkeypatch) -> None:
     store = KeychainTokenStore()
     monkeypatch.setattr(store, "_load_raw", lambda _account: b"not-json")
     with pytest.raises(YotoError) as error:
         store.load("client")
     assert error.value.code == "keychain_token_invalid"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DPAPI only")
+def test_windows_tokens_round_trip_encrypted(tmp_path) -> None:
+    store = WindowsTokenStore(tmp_path)
+    assert isinstance(default_token_store(), WindowsTokenStore)
+    assert store.load("client") is None
+    store.save("client", {"access_token": "test-secret", "refresh_token": "test-refresh"})
+    path = store._path("client")
+    assert b"test-secret" not in path.read_bytes()
+    assert store.load("client") == {"access_token": "test-secret", "refresh_token": "test-refresh"}
+    store.save("client", {"access_token": "rotated"})
+    assert store.load("client") == {"access_token": "rotated"}
+    store.delete("client")
+    assert store.load("client") is None
 
 
 def test_phone_auth_requires_https_callback(tmp_path) -> None:

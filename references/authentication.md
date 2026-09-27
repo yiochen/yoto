@@ -14,13 +14,15 @@ uv run --project "$YOTO_SKILL_DIR" python "$YOTO_SKILL_DIR/scripts/yoto.py" --js
 uv run --project "$YOTO_SKILL_DIR" python "$YOTO_SKILL_DIR/scripts/yoto.py" --json auth begin
 ```
 
+In Windows PowerShell, set `$YOTO_SKILL_DIR` to the skill folder and use `uv run --project $YOTO_SKILL_DIR python "$YOTO_SKILL_DIR/scripts/yoto.py" --json auth ...`. Run this under the same Windows account that will later use the playlist commands.
+
 Open the returned `authorization_url` on the phone. After approving access, the callback page displays a JSON object containing `code` and `state`. Copy the whole object and paste it into the conversation. Pass it to the completion command over standard input:
 
 ```bash
 uv run --project "$YOTO_SKILL_DIR" python "$YOTO_SKILL_DIR/scripts/yoto.py" --json auth complete
 ```
 
-Do not put that JSON in a command-line argument. Launch the command in a PTY, send the JSON to standard input, then send EOF (`Ctrl-D`). The authorization code is short-lived and single-use. `auth begin` treats its locally stored PKCE verifier and state as invalid after ten minutes; expired data is removed on a completion attempt, logout, or replacement by a new attempt. Restart the flow if completion reports expiry.
+Do not put that JSON in a command-line argument. Launch the command in a PTY, send the JSON to standard input, then send EOF (`Ctrl-D` on macOS; `Ctrl-Z` then Enter on Windows). The authorization code is short-lived and single-use. `auth begin` treats its locally stored PKCE verifier and state as invalid after ten minutes; expired data is removed on a completion attempt, logout, or replacement by a new attempt. Restart the flow if completion reports expiry.
 
 For a same-desktop flow, run `auth login`; it opens the browser and receives the callback on loopback without copy/paste.
 
@@ -54,9 +56,11 @@ Run `auth status` to see the token's safe `scopes` and `missing_scopes` lists. T
 - Generated icon sources and previews: `~/Library/Application Support/Yoto Skill/generated-icons/`.
 - Per-card advisory locks: `~/Library/Application Support/Yoto Skill/locks/`.
 
-The CLI refreshes access shortly before expiry. Yoto refresh tokens are single-use, so it writes every rotated token to Keychain immediately. On an API `401`, it refreshes and retries the request once only.
+On Windows, the client ID, generated icons, and card locks are under `%LOCALAPPDATA%\Yoto Skill`. OAuth tokens and pending PKCE data are encrypted with current-user Windows Data Protection (DPAPI) before storage in its `credentials` directory. They can be decrypted only in the same Windows user context. Windows Hello may unlock that session, but reading a token does not trigger a separate Hello prompt. Keep the directory local rather than in a synchronized folder.
 
-Use `auth logout` to remove the token from Keychain. It intentionally keeps the public client ID configuration.
+The CLI refreshes access shortly before expiry. Yoto refresh tokens are single-use, so it writes every rotated token to the platform's protected storage immediately. On an API `401`, it refreshes and retries the request once only.
+
+Use `auth logout` to remove the protected token. It intentionally keeps the public client ID configuration.
 
 ## OAuth endpoints and parameters
 

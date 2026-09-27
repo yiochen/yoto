@@ -15,6 +15,8 @@ Treat the directory containing this file as `YOTO_SKILL_DIR`. Run commands in JS
 uv run --project "$YOTO_SKILL_DIR" python "$YOTO_SKILL_DIR/scripts/yoto.py" --json <category> <command> ...
 ```
 
+In Windows PowerShell, set `$YOTO_SKILL_DIR` to the skill folder and run `uv run --project $YOTO_SKILL_DIR python "$YOTO_SKILL_DIR/scripts/yoto.py" --json ...`. Run the CLI under the Windows account that authorized Yoto so its protected credentials can be read.
+
 Responses use one of these envelopes:
 
 ```json
@@ -55,11 +57,11 @@ Prefer the phone-friendly two-step flow:
 ... --json auth logout
 ```
 
-Give the returned `authorization_url` to the user. Ask them to open it on their phone, authorize Yoto, tap **Copy authorization result**, and paste the complete JSON object back into the conversation. Then launch `auth complete` in a PTY, send that exact JSON to its standard input, and send EOF (`Ctrl-D`) so the command can proceed. Never put the authorization code in a command-line argument, shell history, or file. After completion succeeds, continue the original card operation.
+Give the returned `authorization_url` to the user. Ask them to open it on their phone, authorize Yoto, tap **Copy authorization result**, and paste the complete JSON object back into the conversation. Then launch `auth complete` in a PTY, send that exact JSON to its standard input, and send EOF (`Ctrl-D` on macOS; `Ctrl-Z` then Enter on Windows) so the command can proceed. Never put the authorization code in a command-line argument, shell history, or file. After completion succeeds, continue the original card operation.
 
-The phone flow treats the PKCE verifier and OAuth state in macOS Keychain as invalid after ten minutes; expired data is deleted when completion is attempted, logout runs, or a new attempt replaces it. The public callback page receives only the one-time code and state. For a same-desktop flow, `auth login` remains available and listens only on `127.0.0.1:8787`.
+The phone flow treats the PKCE verifier and OAuth state as invalid after ten minutes; expired data is deleted when completion is attempted, logout runs, or a new attempt replaces it. The public callback page receives only the one-time code and state. For a same-desktop flow, `auth login` remains available and listens only on `127.0.0.1:8787`.
 
-Do not request or store a client secret. Tokens and pending PKCE data belong in macOS Keychain.
+Do not request or store a client secret. Tokens and pending PKCE data belong in macOS Keychain or, on Windows, in files encrypted with current-user Windows Data Protection (DPAPI). Windows Hello may unlock the Windows session; the skill does not request a separate Hello prompt for each command.
 
 ## Inspect and list
 
@@ -125,7 +127,7 @@ The same uploaded icon is applied to the chapter and its single track.
 
 ## Boundaries and recovery
 
-- Support macOS, local MP3 files, and user-owned MYO playlists only.
+- Support Windows and macOS, local MP3 files, and user-owned MYO playlists only.
 - Never attempt to edit purchased content or link/unlink physical cards.
 - Never hand-edit card JSON or call the API with ad hoc `curl`; use the script so refresh-token rotation and read-modify-write safety remain intact.
 - If an API response no longer matches expectations, stop rather than inventing fields. Read [api.md](references/api.md), capture the structured error without credentials, and recommend checking Yoto's current API docs.

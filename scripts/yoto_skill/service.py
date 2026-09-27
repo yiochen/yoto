@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import fcntl
+import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -12,6 +13,11 @@ from .icons import prepare_icon, upload_icon
 from .media import inspect_mp3, upload_audio
 from .storage import app_data_dir
 
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
+
 
 class YotoService:
     def __init__(self, api: YotoAPI) -> None:
@@ -22,12 +28,30 @@ class YotoService:
         directory = app_data_dir() / "locks"
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{card_id}.lock"
-        with path.open("w") as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX)
+        with path.open("a+b") as stream:
+            if sys.platform == "win32":
+                if stream.tell() == 0:
+                    stream.write(b"\0")
+                    stream.flush()
+                for attempt in range(600):
+                    stream.seek(0)
+                    try:
+                        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        if attempt == 599:
+                            raise YotoError("card_lock_timeout", "Could not lock the card for editing")
+                        time.sleep(0.1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(stream, fcntl.LOCK_UN)
+                if sys.platform == "win32":
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(stream, fcntl.LOCK_UN)
 
     def list_cards(self) -> list[dict[str, Any]]:
         return [cards.summarize_card(card) for card in self.api.list_cards()]

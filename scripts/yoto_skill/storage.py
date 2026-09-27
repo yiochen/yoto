@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -16,7 +18,11 @@ ERR_SEC_ITEM_NOT_FOUND = -25300
 
 def app_data_dir() -> Path:
     override = os.environ.get("YOTO_DATA_DIR")
-    return Path(override).expanduser() if override else Path.home() / "Library/Application Support/Yoto Skill"
+    if override:
+        return Path(override).expanduser()
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Yoto Skill"
+    return Path.home() / "Library/Application Support/Yoto Skill"
 
 
 class ConfigStore:
@@ -45,6 +51,77 @@ class TokenStore(Protocol):
     def load(self, account: str) -> dict[str, Any] | None: ...
     def save(self, account: str, value: dict[str, Any]) -> None: ...
     def delete(self, account: str) -> None: ...
+
+
+def default_token_store() -> TokenStore:
+    if sys.platform == "win32":
+        return WindowsTokenStore()
+    if sys.platform == "darwin":
+        return KeychainTokenStore()
+    raise YotoError("unsupported_platform", "Yoto supports Windows and macOS")
+
+
+class DataBlob(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.c_uint32), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
+
+
+class WindowsTokenStore:
+    """Encrypt OAuth data with current-user Windows DPAPI before writing it locally."""
+
+    def __init__(self, root: Path | None = None) -> None:
+        if sys.platform != "win32":
+            raise YotoError("windows_security_unavailable", "Windows data protection is unavailable")
+        self.root = (root or app_data_dir()) / "credentials"
+        self.crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+        self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        pointer = ctypes.POINTER(DataBlob)
+        self.crypt32.CryptProtectData.argtypes = [pointer, ctypes.c_wchar_p, pointer, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, pointer]
+        self.crypt32.CryptProtectData.restype = ctypes.c_int
+        self.crypt32.CryptUnprotectData.argtypes = [pointer, ctypes.c_void_p, pointer, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, pointer]
+        self.crypt32.CryptUnprotectData.restype = ctypes.c_int
+        self.kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        self.kernel32.LocalFree.restype = ctypes.c_void_p
+
+    def _path(self, account: str) -> Path:
+        digest = hashlib.sha256(account.encode("utf-8")).hexdigest()
+        return self.root / f"{digest}.bin"
+
+    def _transform(self, raw: bytes, protect: bool) -> bytes:
+        buffer = ctypes.create_string_buffer(raw)
+        source = DataBlob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+        result = DataBlob()
+        operation = self.crypt32.CryptProtectData if protect else self.crypt32.CryptUnprotectData
+        if not operation(ctypes.byref(source), "Yoto OAuth credentials" if protect else None, None, None, None, 0x01, ctypes.byref(result)):
+            error = ctypes.get_last_error()
+            raise YotoError("windows_security_error", f"Windows could not protect Yoto credentials (error {error})", {"win_error": error})
+        try:
+            return ctypes.string_at(result.pbData, result.cbData)
+        finally:
+            self.kernel32.LocalFree(result.pbData)
+
+    def load(self, account: str) -> dict[str, Any] | None:
+        path = self._path(account)
+        if not path.exists():
+            return None
+        try:
+            raw = self._transform(path.read_bytes(), protect=False)
+            value = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise YotoError("windows_token_invalid", "Stored Yoto credentials could not be read") from exc
+        if not isinstance(value, dict):
+            raise YotoError("windows_token_invalid", "Stored Yoto credentials are invalid")
+        return value
+
+    def save(self, account: str, value: dict[str, Any]) -> None:
+        encrypted = self._transform(json.dumps(value, separators=(",", ":")).encode("utf-8"), protect=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self._path(account)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_bytes(encrypted)
+        temporary.replace(path)
+
+    def delete(self, account: str) -> None:
+        self._path(account).unlink(missing_ok=True)
 
 
 class KeychainTokenStore:
