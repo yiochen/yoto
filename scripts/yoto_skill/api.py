@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from .auth import AuthManager
+from .covers import download_image
 from .errors import YotoError
 
 DEFAULT_API_BASE = "https://api.yotoplay.com"
@@ -91,3 +92,13 @@ class YotoAPI:
             content=payload,
             headers={"Content-Type": "image/png"},
         )
+
+    def upload_cover(self, payload: bytes) -> dict[str, Any]:
+        return self.request(
+            "POST", "/media/coverImage/user/me/upload",
+            params={"autoconvert": "true", "coverType": "default"},
+            content=payload, headers={"Content-Type": "image/png"},
+        )
+
+    def download_cover(self, url: str) -> bytes:
+        return download_image(url, self.http)

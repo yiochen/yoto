@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import copy
+import io
+from pathlib import Path
 
 import pytest
+from PIL import Image
 
+from yoto_skill.covers import prepare_cover
 from yoto_skill.errors import YotoError
 from yoto_skill.icons import PreparedIcon
 from yoto_skill.media import AudioInfo
@@ -14,6 +18,7 @@ class MemoryAPI:
     def __init__(self, card) -> None:
         self.cards = {card["cardId"]: copy.deepcopy(card)}
         self.fail_save = False
+        self.cover_bytes = b""
 
     def list_cards(self):
         return [copy.deepcopy(card) for card in self.cards.values()]
@@ -29,6 +34,99 @@ class MemoryAPI:
         saved["cardId"] = card_id
         self.cards[card_id] = saved
         return copy.deepcopy(saved)
+
+    def upload_cover(self, payload):
+        self.cover_bytes = payload
+        return {"coverImage": {"mediaUrl": "https://yoto.example/cover.jpg"}}
+
+    def download_cover(self, _url):
+        return self.cover_bytes
+
+
+def prepared_cover(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (300, 300), "blue").save(source)
+    return prepare_cover(source, root=tmp_path / "prepared")
+
+
+def test_set_cover_preserves_existing_tracks(tmp_path, monkeypatch, simple_card) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    api = MemoryAPI(simple_card)
+    before = copy.deepcopy(api.cards["card-1"]["content"])
+    result = YotoService(api).set_cover("card-1", prepared_cover(tmp_path).cover)
+    assert result["cover_url"] == "https://yoto.example/cover.jpg"
+    assert Path(result["published"]["preview"]).is_file()
+    assert api.cards["card-1"]["content"] == before
+
+
+def test_set_cover_rejects_unprepared_square(tmp_path, monkeypatch, simple_card) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    square = tmp_path / "square.png"
+    Image.new("RGB", (300, 300), "blue").save(square)
+    with pytest.raises(YotoError) as error:
+        YotoService(MemoryAPI(simple_card)).set_cover("card-1", str(square))
+    assert error.value.code == "cover_not_prepared"
+
+
+def test_set_cover_retries_after_concurrent_change(tmp_path, monkeypatch, simple_card) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr("yoto_skill.service.time.sleep", lambda _: None)
+
+    class ConcurrentAPI(MemoryAPI):
+        saves = 0
+
+        def save_card(self, card):
+            self.saves += 1
+            if self.saves == 1:
+                self.cards["card-1"]["title"] = "Concurrent edit"
+                return copy.deepcopy(card)
+            return super().save_card(card)
+
+    api = ConcurrentAPI(simple_card)
+    result = YotoService(api).set_cover("card-1", prepared_cover(tmp_path).cover)
+    assert api.saves == 2
+    assert result["title"] == "Concurrent edit"
+    assert result["cover_url"] == "https://yoto.example/cover.jpg"
+
+
+def test_set_cover_never_reports_unverified_update(tmp_path, monkeypatch, simple_card) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr("yoto_skill.service.time.sleep", lambda _: None)
+
+    class IgnoringAPI(MemoryAPI):
+        saves = 0
+
+        def save_card(self, card):
+            self.saves += 1
+            return copy.deepcopy(card)
+
+    api = IgnoringAPI(simple_card)
+    with pytest.raises(YotoError) as error:
+        YotoService(api).set_cover("card-1", prepared_cover(tmp_path).cover)
+    assert error.value.code == "update_not_verified"
+    assert api.saves == 2
+
+
+def test_set_cover_does_not_save_wrong_yoto_conversion(tmp_path, monkeypatch, simple_card) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+
+    class CroppingAPI(MemoryAPI):
+        saves = 0
+
+        def download_cover(self, _url):
+            stream = io.BytesIO()
+            Image.new("RGB", (638, 1011), "black").save(stream, format="PNG")
+            return stream.getvalue()
+
+        def save_card(self, card):
+            self.saves += 1
+            return super().save_card(card)
+
+    api = CroppingAPI(simple_card)
+    with pytest.raises(YotoError) as error:
+        YotoService(api).set_cover("card-1", prepared_cover(tmp_path).cover)
+    assert error.value.code == "cover_publication_unverified"
+    assert api.saves == 0
 
 
 def test_mocked_complete_song_workflow(monkeypatch, tmp_path, simple_card) -> None:

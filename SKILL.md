@@ -1,6 +1,6 @@
 ---
 name: yoto
-description: "Manage a user's Yoto Make Your Own (MYO) playlists: authenticate with Yoto, list or inspect cards, create playlists, and add, rename, reorder, remove, or re-icon local MP3 songs. Use when the user mentions Yoto cards, MYO playlists, uploading MP3 audio to Yoto, arranging songs on a Yoto card, or generating Yoto Player icons. Do not use for purchased-card editing, physical card linking, device control, or non-MP3 media."
+description: "Manage a user's Yoto Make Your Own (MYO) playlists: authenticate, list or inspect cards, create playlists, manage cover art, and add, rename, reorder, remove, or re-icon local MP3 songs. Use for Yoto cards, MYO playlists, MP3 uploads, card covers, or Yoto Player icons. Excludes purchased-card editing, physical card linking, device control, and non-MP3 media."
 ---
 
 # Yoto
@@ -78,6 +78,39 @@ Use `song_key`, not a visible position, for subsequent song mutations. Positions
 ```
 
 This creates MYO playlist content. It does not link a physical MYO card; the user can link it in the Yoto app.
+
+## Set a playlist cover
+
+Yoto centre-crops uploaded covers to a 638 × 1011 portrait. Find the uncropped source for the exact book, language, volume, and edition; prefer matching art embedded in an MP3 or the publisher's original image. If the current Yoto artwork has already lost text or artwork at the sides, do not reuse that cropped image. Search for the complete source and inspect its edges before preparing it.
+
+Extract embedded art when appropriate, then compose a portrait canvas that contains the **entire** source image with safe margins:
+
+```bash
+... --json media cover --file /absolute/path/first-track.mp3
+... --json media prepare-cover --file /absolute/path/extracted-cover.jpg
+```
+
+For a direct public HTTPS source image, prepare it locally in the same way:
+
+```bash
+... --json media prepare-cover --image-url 'https://publisher.example/uncropped-cover.jpg'
+```
+
+When one book spans several playlists, prepare a distinct cover for each playlist. Add `--part-number 1 --part-total 3`, then `2/3` and `3/3`; the corner badge shows `1/3`, etc. The fraction counts playlist parts of **one book**, separately from its tome number. Optional `--header`, `--title`, `--subtitle`, `--background`, and `--foreground` place a legible caption in the margins when the source text is too small at card size. Keep these captions accurate to the source and the playlist. For example:
+
+```bash
+... --json media prepare-cover --file /absolute/path/full-cover.jpg --part-number 1 --part-total 3 --header "À la croisée des mondes" --title "Les Royaumes du Nord" --subtitle "Chapitres 1–8" --background "#152744"
+```
+
+Inspect each returned `preview` at 160 × 254 pixels. Check that the full title and side artwork remain visible and that each part badge is legible. Only then upload the returned `cover` path:
+
+```bash
+... --json cards set-cover --card-id CARD_ID --file /absolute/path/cover-638x1011.png
+```
+
+`cards set-cover` accepts only a prepared 638 × 1011 PNG, re-reads the complete card, and verifies the stored URL. It downloads Yoto's published image, checks its size and similarity, re-reads the card once more, and returns a `published.preview` path. View that actual published preview before reporting success. If verification fails during another edit, the command waits for a stable card and retries once from its latest document. If it still returns `update_not_verified`, re-read and report the unresolved state without claiming the cover was saved. If no uncropped source can be verified, retain the existing artwork and explain why.
+
+Read [cover-layout.md](references/cover-layout.md) for the complete visual checks when updating a library of audiobook covers.
 
 ## Add a song with a generated icon
 

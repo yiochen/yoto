@@ -1,4 +1,4 @@
 interface:
   display_name: "Yoto"
-  short_description: "Manage Yoto MYO cards, songs, and icons"
-  default_prompt: "Use $yoto to list my MYO cards or manage their songs and generated icons."
+  short_description: "Manage Yoto MYO cards, songs, covers, and icons"
+  default_prompt: "Use $yoto to manage my MYO playlists, cover art, songs, and icons."

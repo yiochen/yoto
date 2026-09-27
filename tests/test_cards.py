@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from yoto_skill.cards import add_song, move_song, remove_song, rename_song, set_song_icon, song_rows
+from yoto_skill.cards import add_song, move_song, remove_song, rename_song, set_cover, set_song_icon, song_rows
 from yoto_skill.errors import YotoError
 from yoto_skill.media import AudioInfo
 
@@ -26,6 +26,15 @@ def test_add_preserves_fields_and_recomputes_aggregates(simple_card) -> None:
     assert added["key"] == key
     assert added["title"] == added["tracks"][0]["title"] == "New Song"
     assert added["display"] == added["tracks"][0]["display"]
+
+
+def test_set_cover_preserves_unknown_metadata_and_chapters(simple_card) -> None:
+    original = copy.deepcopy(simple_card)
+    updated = set_cover(simple_card, "https://yoto.example/cover.jpg")
+    assert simple_card == original
+    assert updated["metadata"]["cover"]["imageL"] == "https://yoto.example/cover.jpg"
+    assert updated["metadata"]["custom"] == original["metadata"]["custom"]
+    assert updated["content"] == original["content"]
 
 
 def test_rename_move_remove_and_icon(simple_card) -> None:

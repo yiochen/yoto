@@ -14,6 +14,12 @@ Each song managed by this skill is one chapter containing exactly one audio trac
 
 Official references: [content endpoints](https://yoto.dev/api/content/), [get MYO content](https://yoto.dev/api/getUserSMyoContent/), [create/update content](https://yoto.dev/api/createOrUpdateContent/), and [card schema](https://yoto.dev/reference/card-content-schema/).
 
+## Playlist cover
+
+`POST /media/coverImage/user/me/upload?autoconvert=true&coverType=default` centre-crops the input to 638 × 1011 pixels. The skill first contains the entire uncropped source inside a portrait canvas of exactly that size, with safe margins and an optional **PARTIE X/N** badge. `media prepare-cover` saves the upload PNG and a 160 × 254 preview. The API sends only that prepared PNG, never an unprepared square image or an `imageUrl` for Yoto to crop.
+
+The response's `coverImage.mediaUrl` goes in `metadata.cover.imageL` on the full card document. The command fetches the latest card before saving and re-fetches afterward. On a verification mismatch, it waits for the card to settle, rebuilds from the latest document, and retries once. It then downloads the URL from the saved card, checks its dimensions and pixels against the prepared canvas, and returns a preview of the actual published image. It never reports success from the upload response alone. Official references: [upload endpoint and dimensions](https://yoto.dev/api/media/uploadcoverimage/), [cover workflow](https://yoto.dev/myo/uploading-cover-images/).
+
 ## MP3 upload and transcode
 
 1. Compute SHA-256 over the local MP3.

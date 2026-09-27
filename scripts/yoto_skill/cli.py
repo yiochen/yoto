@@ -10,9 +10,10 @@ import httpx
 
 from .api import YotoAPI
 from .auth import AuthManager, DEFAULT_AUTH_BASE, DEFAULT_REMOTE_CALLBACK_URL
+from .covers import download_image, prepare_cover
 from .errors import YotoError
 from .icons import prepare_icon
-from .media import inspect_mp3
+from .media import extract_cover, inspect_mp3
 from .service import YotoService
 from .storage import ConfigStore, KeychainTokenStore
 
@@ -41,11 +42,27 @@ def parser() -> argparse.ArgumentParser:
     create = card_commands.add_parser("create")
     create.add_argument("--title", required=True)
     create.add_argument("--description")
+    set_cover = card_commands.add_parser("set-cover")
+    set_cover.add_argument("--card-id", required=True)
+    set_cover.add_argument("--file", required=True, help="Prepared 638x1011 PNG from media prepare-cover")
 
     media = categories.add_parser("media")
     media_commands = media.add_subparsers(dest="command", required=True)
     inspect = media_commands.add_parser("inspect")
     inspect.add_argument("--file", required=True)
+    embedded_cover = media_commands.add_parser("cover")
+    embedded_cover.add_argument("--file", required=True)
+    prepare_cover_command = media_commands.add_parser("prepare-cover")
+    cover_source = prepare_cover_command.add_mutually_exclusive_group(required=True)
+    cover_source.add_argument("--file")
+    cover_source.add_argument("--image-url")
+    prepare_cover_command.add_argument("--part-number", type=int)
+    prepare_cover_command.add_argument("--part-total", type=int)
+    prepare_cover_command.add_argument("--header")
+    prepare_cover_command.add_argument("--title")
+    prepare_cover_command.add_argument("--subtitle")
+    prepare_cover_command.add_argument("--background", default="#172030")
+    prepare_cover_command.add_argument("--foreground", default="#FFFFFF")
 
     icon = categories.add_parser("icons")
     icon_commands = icon.add_subparsers(dest="command", required=True)
@@ -110,10 +127,18 @@ def execute(args: argparse.Namespace, auth: AuthManager, service: YotoService) -
             "list": service.list_cards,
             "show": lambda: service.show_card(args.card_id),
             "create": lambda: service.create_card(args.title, args.description),
+            "set-cover": lambda: service.set_cover(args.card_id, args.file),
         }
         return operations[args.command]()
     if args.category == "media" and args.command == "inspect":
         return inspect_mp3(args.file).json()
+    if args.category == "media" and args.command == "cover":
+        return extract_cover(args.file)
+    if args.category == "media" and args.command == "prepare-cover":
+        source = download_image(args.image_url) if args.image_url else args.file
+        return prepare_cover(source, part_number=args.part_number, part_total=args.part_total,
+                             header=args.header, title=args.title, subtitle=args.subtitle,
+                             background=args.background, foreground=args.foreground).json()
     if args.category == "icons" and args.command == "prepare":
         return prepare_icon(args.input, args.title).json()
     if args.category == "songs":

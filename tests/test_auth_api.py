@@ -276,3 +276,22 @@ def test_icon_upload_uses_raw_rgba_png_contract() -> None:
 
     api = YotoAPI(FakeAuth(), httpx.Client(transport=httpx.MockTransport(handler)), "https://example.test")
     assert api.upload_icon("icon.png", b"png-bytes")["displayIcon"]["mediaId"] == "icon-hash"
+
+
+def test_cover_upload_uses_official_endpoint() -> None:
+    class FakeAuth:
+        def access_token(self, force_refresh: bool = False) -> str:
+            return "token"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/media/coverImage/user/me/upload"
+        assert request.url.params["autoconvert"] == "true"
+        assert request.url.params["coverType"] == "default"
+        assert "imageUrl" not in request.url.params
+        assert request.headers["Content-Type"] == "image/png"
+        assert request.content == b"portrait-png"
+        return httpx.Response(200, json={"coverImage": {"mediaUrl": "https://yoto.example/cover"}})
+
+    api = YotoAPI(FakeAuth(), httpx.Client(transport=httpx.MockTransport(handler)), "https://example.test")
+    assert api.upload_cover(b"portrait-png")["coverImage"]["mediaUrl"] == "https://yoto.example/cover"

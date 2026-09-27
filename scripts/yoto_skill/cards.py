@@ -43,6 +43,7 @@ def summarize_card(card: dict[str, Any]) -> dict[str, Any]:
         "card_id": card.get("cardId") or card.get("id"),
         "title": card.get("title") or "Untitled",
         "description": (card.get("metadata") or {}).get("description"),
+        "cover_url": ((card.get("metadata") or {}).get("cover") or {}).get("imageL"),
         "songs": song_rows(card),
     }
 
@@ -77,6 +78,20 @@ def new_card(title: str, description: str | None = None) -> dict[str, Any]:
     if description:
         card["metadata"]["description"] = description
     return card
+
+
+def set_cover(card: dict[str, Any], image_url: str) -> dict[str, Any]:
+    updated = copy.deepcopy(card)
+    metadata = updated.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        updated["metadata"] = metadata
+    cover = metadata.get("cover")
+    if not isinstance(cover, dict):
+        cover = {}
+        metadata["cover"] = cover
+    cover["imageL"] = image_url
+    return updated
 
 
 def _unique_key(card: dict[str, Any]) -> str:

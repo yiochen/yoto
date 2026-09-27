@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Callable
 
 from mutagen.mp3 import MP3, HeaderNotFoundError
+from PIL import Image, UnidentifiedImageError
 
 from .api import YotoAPI
 from .errors import YotoError, require
+from .storage import app_data_dir
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,35 @@ def inspect_mp3(path: str | Path) -> AudioInfo:
         artist=_first_tag(audio.tags, "TPE1"),
         album=_first_tag(audio.tags, "TALB"),
     )
+
+
+def extract_cover(path: str | Path) -> dict[str, Any]:
+    """Copy the front-cover APIC frame from an MP3 into the skill's local data directory."""
+    source = Path(path).expanduser().resolve()
+    require(source.is_file() and source.suffix.lower() == ".mp3", "audio_not_found", f"MP3 file does not exist: {source}")
+    try:
+        tags = MP3(source).tags
+    except (HeaderNotFoundError, OSError) as exc:
+        raise YotoError("invalid_mp3", f"Could not read MP3 metadata: {source}") from exc
+    pictures = tags.getall("APIC") if tags else []
+    require(bool(pictures), "cover_not_found", "This MP3 has no embedded cover image")
+    picture = next((item for item in pictures if item.type == 3), pictures[0])
+    mime = str(picture.mime).lower()
+    require(mime in {"image/jpeg", "image/png"}, "invalid_cover", "Embedded cover must be JPEG or PNG")
+    try:
+        with Image.open(io.BytesIO(picture.data)) as opened:
+            opened.verify()
+        with Image.open(io.BytesIO(picture.data)) as opened:
+            width, height = opened.size
+    except (UnidentifiedImageError, OSError) as exc:
+        raise YotoError("invalid_cover", "Embedded cover image is unreadable") from exc
+    digest = hashlib.sha256(picture.data).hexdigest()[:16]
+    destination = app_data_dir() / "embedded-covers"
+    destination.mkdir(parents=True, exist_ok=True)
+    output = destination / f"{digest}{'.jpg' if mime == 'image/jpeg' else '.png'}"
+    if not output.exists():
+        output.write_bytes(picture.data)
+    return {"path": str(output), "mime": mime, "width": width, "height": height}
 
 
 def upload_audio(

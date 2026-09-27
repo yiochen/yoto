@@ -7,7 +7,7 @@ from PIL import Image
 
 from yoto_skill.errors import YotoError
 from yoto_skill.icons import prepare_icon
-from yoto_skill.media import AudioInfo, upload_audio
+from yoto_skill.media import AudioInfo, extract_cover, upload_audio
 
 
 def info(tmp_path: Path) -> AudioInfo:
@@ -27,6 +27,24 @@ def test_icon_conversion_is_exact_rgba_and_pixel_preview(tmp_path) -> None:
         assert preview.size == (256, 256)
         assert preview.getpixel((8, 8)) == preview.getpixel((15, 15))
     assert Path(prepared.source).exists()
+
+
+def test_extract_embedded_front_cover(tmp_path, monkeypatch) -> None:
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    buffer = BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(buffer, format="JPEG")
+    front = SimpleNamespace(type=3, mime="image/jpeg", data=buffer.getvalue())
+    other = SimpleNamespace(type=0, mime="image/jpeg", data=b"not-a-picture")
+    monkeypatch.setattr("yoto_skill.media.MP3", lambda _: SimpleNamespace(tags=SimpleNamespace(getall=lambda key: [other, front])))
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    source = tmp_path / "track.mp3"
+    source.write_bytes(b"mp3")
+    result = extract_cover(source)
+    assert result["mime"] == "image/jpeg"
+    assert (result["width"], result["height"]) == (32, 32)
+    assert Path(result["path"]).read_bytes() == front.data
 
 
 class FakeMediaAPI:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from yoto_skill.cli import main
+from PIL import Image
+
+from yoto_skill.cli import execute, main, parser
 from yoto_skill.errors import YotoError
 
 
@@ -48,3 +50,15 @@ def test_auth_complete_reads_result_from_stdin(monkeypatch, capsys) -> None:
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["data"] == {"received": {"code": "c", "state": "s"}}
+
+
+def test_prepare_cover_cli_exposes_review_preview(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("YOTO_DATA_DIR", str(tmp_path / "data"))
+    source = tmp_path / "source.png"
+    Image.new("RGB", (300, 300), "blue").save(source)
+    args = parser().parse_args(["media", "prepare-cover", "--file", str(source),
+                                "--part-number", "1", "--part-total", "3", "--title", "Book 1"])
+    result = execute(args, None, None)
+    assert result["part_label"] == "1/3"
+    with Image.open(result["preview"]) as preview:
+        assert preview.size == (160, 254)
